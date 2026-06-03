@@ -134,7 +134,7 @@ tbody tr:hover td{background:var(--surface-2)}
 <!-- LOGIN -->
 <div id="login-screen" class="login-wrap">
   <div class="login-box">
-    <div class="login-logo"><img src="logo_zamoranas.jpg" alt="Logo Zamoranas"/></div>
+    <div class="login-logo"><img src="logo_zamoranas.jpg" alt="Logo Grúas Zamoranas"/></div>
     <div class="login-title">Control de Grúas</div>
     <div class="login-sub">Grúas Zamoranas</div>
     <div class="login-err" id="login-err">Usuario o contrasena incorrectos</div>
@@ -154,7 +154,7 @@ tbody tr:hover td{background:var(--surface-2)}
 <div id="app-screen" style="display:none">
 <header class="header">
   <div class="header-brand">
-    <div class="logo-badge">&#x1F69B;</div>
+    <img src="logo_zamoranas.jpg" style="width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0" alt="Logo Grúas Zamoranas"/>
     <div>
       <div class="header-title">Control de Grúas Zamoranas</div>
       <div class="header-sub">Sistema de Flota</div>
@@ -484,8 +484,8 @@ tbody tr:hover td{background:var(--surface-2)}
 </div>
 
 <script>
-const SUPA_URL='https://TU-PROYECTO.supabase.co'; // <-- pega aqui tu Project URL
-const SUPA_KEY='TU_LLAVE_ANON_PUBLICA'; // <-- pega aqui tu anon public key
+const SUPA_URL='https://smolpwaytxgrqyxgjwgf.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb2xwd2F5dHhncnF5eGdqd2dmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1MTYyNTIsImV4cCI6MjA5NjA5MjI1Mn0.jm9XjaeTTrCuA23JXzkb_lJSFQGBSxn1Eg2ZDS-aHZs';
 const sb=supabase.createClient(SUPA_URL,SUPA_KEY);
 
 let currentUser=null,isAdmin=false;
@@ -531,7 +531,7 @@ async function initApp(){
   document.getElementById('user-nombre').textContent=currentUser.nombre;
   document.getElementById('user-rol-badge').textContent=isAdmin?'ADMIN':'USUARIO';
   document.getElementById('header-date').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-  document.getElementById('nav-admin').style.display=(currentUser.username==='admin')?'flex':'none';
+  document.getElementById('nav-admin').style.display=(currentUser.username==='Fatima')?'flex':'none';
   document.getElementById('card-add-grua').style.display=isAdmin?'block':'none';
   // Hide registration forms for non-admin, show only read-only sections
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin?'block':'none');
@@ -1233,7 +1233,7 @@ function renderResumen(){
 
 // USUARIOS
 async function addUsuario(){
-  if(currentUser.username!=='admin')return toast('Solo el administrador puede crear usuarios',true);
+  if(currentUser.username!=='Fatima')return toast('Solo Fatima puede crear usuarios',true);
   const nombre=document.getElementById('adm-nombre').value.trim();const username=document.getElementById('adm-user').value.trim();
   const password=document.getElementById('adm-pass').value.trim();const rol=document.getElementById('adm-rol').value;
   if(!nombre||!username||!password)return toast('Todos los campos son requeridos',true);
@@ -1243,14 +1243,14 @@ async function addUsuario(){
   toast('Usuario creado correctamente');renderUsuarios();
 }
 async function deleteUsuario(id){
-  if(currentUser.username!=='admin')return;if(!confirm('Eliminar este usuario?'))return;
+  if(currentUser.username!=='Fatima')return;if(!confirm('Eliminar este usuario?'))return;
   await sb.from('usuarios').delete().eq('id',id);toast('Usuario eliminado');renderUsuarios();
 }
 async function renderUsuarios(){
   const{data}=await sb.from('usuarios').select('*').order('created_at');
   const el=document.getElementById('usuarios-list');
   if(!data||!data.length){el.innerHTML='<p class="empty">Sin usuarios registrados.</p>';return}
-  el.innerHTML=data.map(u=>`<div class="usuario-card"><div class="usuario-info"><div class="nombre">${u.nombre}</div><div class="user">@${u.username} &nbsp;<span class="badge ${u.rol==='admin'?'badge-amber':'badge-navy'}">${u.rol}</span></div></div>${isAdmin&&u.username!=='admin'?`<button class="btn btn-danger" onclick="deleteUsuario('${u.id}')">&#x1F5D1;</button>`:''}</div>`).join('');
+  el.innerHTML=data.map(u=>`<div class="usuario-card"><div class="usuario-info"><div class="nombre">${u.nombre}</div><div class="user">@${u.username} &nbsp;<span class="badge ${u.rol==='admin'?'badge-amber':'badge-navy'}">${u.rol}</span></div></div>${isAdmin&&u.username!=='Fatima'?`<button class="btn btn-danger" onclick="deleteUsuario('${u.id}')">&#x1F5D1;</button>`:''}</div>`).join('');
 }
 
 
@@ -2184,7 +2184,7 @@ async function migrateFromOldProject(){
     setStatus('Migrando usuarios...');
     const {data:users} = await oldSb.from('usuarios').select('*');
     for(const u of (users||[])){
-      if(u.username==='admin') continue;
+      if(u.username==='Fatima') continue;
       await sb.from('usuarios').upsert({
         username:u.username, password:u.password, nombre:u.nombre,
         rol:u.rol, activo:u.activo
