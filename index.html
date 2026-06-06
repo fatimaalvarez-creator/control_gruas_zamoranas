@@ -478,6 +478,19 @@ tbody tr:hover td{background:var(--surface-2)}
     <button class="btn btn-accent" onclick="addUsuario()">&#x2713; Crear usuario</button>
   </div>
   <div class="card"><div class="card-title">Usuarios registrados</div><div id="usuarios-list" class="usuarios-grid"></div></div>
+  <div class="card" id="card-historial">
+    <div class="card-title">&#x1F4CB; Historial de actividad</div>
+    <p style="font-size:13px;color:var(--text-2);margin:-6px 0 14px">Registro de lo que hace cada usuario: crear, editar y eliminar. Solo Fatima ve esta seccion.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <select id="hist-filter-user" onchange="renderHistorial()" style="max-width:220px"><option value="">Todos los usuarios</option></select>
+      <button class="btn btn-ghost" onclick="renderHistorial()" style="font-size:12px">&#x21BB; Actualizar</button>
+      <span id="hist-count" style="font-size:12px;color:var(--text-3)"></span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Accion</th><th>Que</th><th>Detalle</th></tr></thead>
+      <tbody id="hist-table"><tr><td colspan="5" class="empty">Sin actividad aun.</td></tr></tbody>
+    </table></div>
+  </div>
 </div>
 
 </main>
@@ -655,7 +668,7 @@ function showSection(s,btn){
   document.querySelectorAll('.nav-btn').forEach(el=>el.classList.remove('active'));
   document.getElementById('sec-'+s).classList.add('active');if(btn)btn.classList.add('active');
   if(s==='resumen')renderResumen();
-  if(s==='admin')renderUsuarios();
+  if(s==='admin'){renderUsuarios();renderHistorial();}
   if(s==='gasolina') setTimeout(()=>initFluidos(),50);
 }
 function showSub(section,sub,btn){
@@ -863,6 +876,35 @@ function calcKmRecorridos(){
 function autoFillMantChofer(){const g=gruas.find(x=>x.id===document.getElementById('mant-grua').value);if(g)document.getElementById('mant-chofer').value=g.chofer||''}
 
 // GRUAS CORREGIDO
+async function logAccion(accion, entidad, detalle){
+  try{
+    if(!currentUser) return;
+    await sb.from('historial').insert([{usuario: currentUser.username, accion: accion, entidad: entidad, detalle: (detalle!=null?String(detalle):null)}]);
+  }catch(e){ console.warn('historial:', e); }
+}
+async function renderHistorial(){
+  const sel=document.getElementById('hist-filter-user');
+  const tbody=document.getElementById('hist-table');
+  const countEl=document.getElementById('hist-count');
+  if(!tbody) return;
+  const {data, error} = await sb.from('historial').select('*').order('created_at',{ascending:false}).limit(500);
+  if(error){ tbody.innerHTML='<tr><td colspan="5" class="empty">No se pudo cargar el historial.</td></tr>'; return; }
+  const rows=data||[];
+  // llenar filtro de usuarios (una sola vez por carga)
+  const usuariosUnicos=[...new Set(rows.map(r=>r.usuario).filter(Boolean))].sort();
+  const actual=sel?sel.value:'';
+  if(sel){ sel.innerHTML='<option value="">Todos los usuarios</option>'+usuariosUnicos.map(u=>`<option value="${u}"${u===actual?' selected':''}>${u}</option>`).join(''); }
+  const filtro=sel?sel.value:'';
+  const list=filtro?rows.filter(r=>r.usuario===filtro):rows;
+  if(countEl) countEl.textContent=list.length+' movimiento'+(list.length!==1?'s':'');
+  if(!list.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">Sin actividad aun.</td></tr>'; return; }
+  const colorAccion=a=>a==='creo'||a==='cre\u00f3'?'badge-green':(a==='elimino'||a==='elimin\u00f3'?'badge-red':(a==='edito'||a==='edit\u00f3'?'badge-amber':'badge-navy'));
+  tbody.innerHTML=list.map(r=>{
+    const f=new Date(r.created_at);
+    const fecha=isNaN(f)?'':f.toLocaleString('es-MX',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<tr><td class="mono" style="white-space:nowrap">${fecha}</td><td><strong>${r.usuario||'&#8212;'}</strong></td><td><span class="badge ${colorAccion(r.accion)}">${r.accion||''}</span></td><td>${r.entidad||'&#8212;'}</td><td style="color:var(--text-2)">${r.detalle||'&#8212;'}</td></tr>`;
+  }).join('');
+}
 async function addGrua(){
   if(!isAdmin)return;
   const id = document.getElementById('g-id').value.trim();
@@ -906,12 +948,13 @@ async function addGrua(){
   document.getElementById('g-fotos-extra-preview').innerHTML='';gruaFotosExtraTemp=[];
   await loadAll();
   renderGruas();
+  await logAccion('creó','grúa',id);
   toast('Grua guardada correctamente');
 }
 
 async function deleteGrua(id){
   if(!isAdmin)return;if(!confirm('Eliminar grua '+id+'? Se borraran todas sus recargas y servicios.'))return;
-  await sb.from('gruas').delete().eq('id',id);await loadAll();renderAll();toast('Grua eliminada');
+  await sb.from('gruas').delete().eq('id',id);await loadAll();renderAll();await logAccion('eliminó','grúa',id);toast('Grua eliminada');
 }
 function renderGruas(){
   document.getElementById('gruas-stats').innerHTML=`<div class="stat accent"><div class="stat-label">Total gruas</div><div class="stat-value">${gruas.length}</div></div><div class="stat green"><div class="stat-label">Con rendimiento</div><div class="stat-value">${gruas.filter(g=>calcRendimientoGrua(g.id)||g.rend).length}</div></div><div class="stat"><div class="stat-label">Sin datos aun</div><div class="stat-value">${gruas.filter(g=>!calcRendimientoGrua(g.id)&&!g.rend).length}</div></div>`;
@@ -969,6 +1012,7 @@ async function savePapelTemp(){
   }
   papelTemp={poliza:[],tarjeta:[],verificacion:[],factura:[]};
   ['prev-poliza','prev-tarjeta','prev-verificacion','prev-factura'].forEach(id=>document.getElementById(id).innerHTML='');
+  await logAccion('actualizó','papelería de grúa',gruaId);
   toast('Documentos guardados correctamente');
   // Sync in background
   loadPapeleria(gruaId).then(()=>renderPapeleria());
@@ -1048,7 +1092,7 @@ async function uploadPapelDirect(gruaId,tipo,input){
 async function deletePapelFoto(gruaId,tipo,idx){
   if(!isAdmin)return;papeleria[gruaId][tipo].splice(idx,1);
   await sb.from('papeleria').upsert({grua:gruaId,tipo,fotos:papeleria[gruaId][tipo],updated_at:new Date().toISOString()},{onConflict:'grua,tipo'});
-  await loadAll();renderPapeleria();toast('Foto eliminada');
+  await loadAll();renderPapeleria();await logAccion('eliminó','foto de papelería',gruaId+' / '+tipo);toast('Foto eliminada');
 }
 
 // GASOLINA
@@ -1078,6 +1122,7 @@ async function addRecarga(){
   document.getElementById('gas-pxl-auto').textContent='';
   document.getElementById('gas-fotos-preview').innerHTML='';gasFotosTemp=[];
   if(document.getElementById('fluidos-toggles'))initFluidos();
+  await logAccion('creó','recarga de gasolina',grua);
   toast('Recarga guardada'+(fotosGuardadas>0?' con '+fotosGuardadas+' archivo(s)':''));
   // Sync in background without blocking UI
   loadAll().then(()=>{
@@ -1091,6 +1136,7 @@ async function deleteRecarga(id){
   recargas=recargas.filter(r=>r.id!==id);
   renderGas();
   if(document.getElementById('gas-sub-diario').style.display!=='none')renderGasDiario();
+  await logAccion('eliminó','recarga','#'+id);
   toast('Recarga eliminada');
   loadAll().then(()=>renderGas());
 }
@@ -1160,6 +1206,7 @@ async function addMant(){
   document.getElementById('mant-fotos-preview').innerHTML='';mantFotosTemp=[];
   document.getElementById('mant-km-warn').style.display='none';
   document.getElementById('mant-km').style.borderColor='';
+  await logAccion('creó','mantenimiento',grua);
   toast('Servicio guardado'+(fotasMant>0?' con '+fotasMant+' archivo(s)':''));
   // Sync in background
   loadAll().then(()=>{
@@ -1173,6 +1220,7 @@ async function deleteMant(id){
   mantenimientos=mantenimientos.filter(m=>m.id!==id);
   renderMant();
   if(document.getElementById('mant-sub-diario').style.display!=='none')renderMantDiario();
+  await logAccion('eliminó','mantenimiento','#'+id);
   toast('Servicio eliminado');
   loadAll().then(()=>renderMant());
 }
@@ -1240,11 +1288,11 @@ async function addUsuario(){
   const{error}=await sb.from('usuarios').insert([{nombre,username,password,rol}]);
   if(error)return toast('Error: '+error.message,true);
   ['adm-nombre','adm-user','adm-pass'].forEach(i=>document.getElementById(i).value='');
-  toast('Usuario creado correctamente');renderUsuarios();
+  await logAccion('creó','usuario',username);toast('Usuario creado correctamente');renderUsuarios();
 }
 async function deleteUsuario(id){
   if(currentUser.username!=='Fatima')return;if(!confirm('Eliminar este usuario?'))return;
-  await sb.from('usuarios').delete().eq('id',id);toast('Usuario eliminado');renderUsuarios();
+  await sb.from('usuarios').delete().eq('id',id);await logAccion('eliminó','usuario','#'+id);toast('Usuario eliminado');renderUsuarios();
 }
 async function renderUsuarios(){
   const{data}=await sb.from('usuarios').select('*').order('created_at');
@@ -1381,6 +1429,7 @@ async function saveEditGrua() {
   const gIdx=gruas.findIndex(g=>g.id===originalId);
   if(gIdx!==-1 && newId===originalId) gruas[gIdx]={...gruas[gIdx],...updateFields};
   renderAll();
+  await logAccion('editó','grúa',newId);
   toast('Grua actualizada correctamente');
   loadAll().then(()=>renderAll());
 }
@@ -1488,6 +1537,7 @@ async function saveEditMant(){
   editMantFotosTemp=[];
   document.getElementById('modal-edit-mant').classList.remove('open');
   renderAll();
+  await logAccion('editó','mantenimiento',grua);
   toast('Servicio actualizado correctamente');
   loadAll().then(()=>{
     renderAll();
@@ -1605,6 +1655,7 @@ async function saveEditRecarga(){
   editRecFotosTemp=[];
   document.getElementById('modal-edit-recarga').classList.remove('open');
   renderAll();
+  await logAccion('editó','recarga',grua);
   toast('Recarga actualizada correctamente');
   loadAll().then(()=>{
     renderAll();
@@ -1809,6 +1860,7 @@ async function saveFluidos(){
   await loadAll(); renderAll();
   if(document.getElementById('mant-sub-diario').style.display!=='none') renderMantDiario();
   if(document.getElementById('fluidos-toggles'))initFluidos();
+  await logAccion('actualizó','fluidos / servicios',null);
   toast('Fluidos guardados correctamente');
 }
 
@@ -1883,6 +1935,7 @@ async function saveOpTemp(){
   }
   OP_TIPOS.forEach(t=>opTemp[t.key]=[]);
   document.querySelectorAll('[id^="op-prev-"]').forEach(el=>el.innerHTML='');
+  await logAccion('actualizó','papelería de operador',nombre);
   toast('Documentos del operador guardados');
   renderOpDocs();
 }
@@ -1929,7 +1982,7 @@ async function deleteOpFoto(nombre,tipo,idx){
   const fotos = ex?.fotos||[];
   fotos.splice(idx,1);
   await sb.from('papeleria_operadores').upsert({operador:nombre,tipo,fotos,updated_at:new Date().toISOString()},{onConflict:'operador,tipo'});
-  renderOpDocs(); toast('Archivo eliminado');
+  renderOpDocs(); await logAccion('eliminó','foto de operador',nombre+' / '+tipo); toast('Archivo eliminado');
 }
 
 function updateOpSelects(){
@@ -1986,6 +2039,7 @@ async function saveHerramientas(){
   herrFotosTemp=[];
   document.getElementById('herr-fecha').value=todayStr();
   await renderHerramientas();
+  await logAccion('registró','herramientas',grua);
   toast('Herramientas guardadas'+(fotos.length?' con '+fotos.length+' archivo(s)':''));
 }
 
@@ -2005,7 +2059,7 @@ async function renderHerramientas(){
 async function deleteHerramienta(id){
   if(!isAdmin) return;
   if(!confirm('Eliminar este registro?')) return;
-  await sb.from('herramientas').delete().eq('id',id);
+  await sb.from('herramientas').delete().eq('id',id);await logAccion('eliminó','herramienta','#'+id);
   renderHerramientas();
   toast('Registro eliminado');
 }
@@ -2030,6 +2084,7 @@ async function saveEquipo(){
   equipoFotosTemp=[];
   document.getElementById('equipo-fecha').value=todayStr();
   await renderEquipo();
+  await logAccion('registró','equipo de operador',operador);
   toast('Equipo guardado'+(fotos.length?' con '+fotos.length+' archivo(s)':''));
 }
 
@@ -2049,7 +2104,7 @@ async function renderEquipo(){
 async function deleteEquipo(id){
   if(!isAdmin) return;
   if(!confirm('Eliminar este registro?')) return;
-  await sb.from('equipo_operadores').delete().eq('id',id);
+  await sb.from('equipo_operadores').delete().eq('id',id);await logAccion('eliminó','equipo de operador','#'+id);
   renderEquipo();
   toast('Registro eliminado');
 }
